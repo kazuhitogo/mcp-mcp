@@ -4,6 +4,8 @@ import os
 import logging
 import sys
 import pathlib
+import time
+import json
 
 # 親ディレクトリをパスに追加して、logger.pyをインポートできるようにする
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -13,10 +15,23 @@ from logger import Logger
 # ログレベルは必要に応じて変更可能: DEBUG, INFO, WARNING, ERROR, CRITICAL
 logger = Logger("minecraft_tools", logging.INFO, "server/logs")
 
-mcp = FastMCP("minecraft")
+# MCP サーバーの初期化
+try:
+    mcp = FastMCP("minecraft")
+    logger.info("FastMCP server initialized successfully")
+except Exception as e:
+    logger.critical(f"Failed to initialize FastMCP server: {str(e)}")
+    sys.exit(1)
 
+# ファイルパスの設定
 this_file_path = os.path.abspath(__file__)
 this_file_dir = os.path.dirname(this_file_path)
+
+# ツールスクリプトディレクトリの存在確認
+tools_dir = os.path.join(this_file_dir, "tools")
+if not os.path.exists(tools_dir):
+    logger.critical(f"Tools directory not found: {tools_dir}")
+    sys.exit(1)
 
 @mcp.tool()
 def setBlocks(x0:int, y0: int, z0: int, x1: int, y1: int ,z1: int, blockType:int) -> str:
@@ -287,39 +302,157 @@ def setBlocks(x0:int, y0: int, z0: int, x1: int, y1: int ,z1: int, blockType:int
     Returns:
         result text
     """
-    script_path = os.path.join(this_file_dir,"tools/setBlocks.py")
+    # 入力値の検証
+    try:
+        # 整数型の検証
+        for param_name, param_value in [
+            ('x0', x0), ('y0', y0), ('z0', z0), 
+            ('x1', x1), ('y1', y1), ('z1', z1), 
+            ('blockType', blockType)
+        ]:
+            if not isinstance(param_value, int):
+                error_msg = f"Parameter {param_name} must be an integer, got {type(param_value).__name__}"
+                logger.error(error_msg)
+                return f"Error: {error_msg}"
+        
+        # blockType の範囲検証
+        if blockType < 0 or blockType > 255:
+            error_msg = f"blockType must be between 0 and 255, got {blockType}"
+            logger.error(error_msg)
+            return f"Error: {error_msg}"
+    except Exception as e:
+        error_msg = f"Parameter validation error: {str(e)}"
+        logger.error(error_msg)
+        return f"Error: {error_msg}"
+    
+    # スクリプトパスの設定と検証
+    script_path = os.path.join(this_file_dir, "tools/setBlocks.py")
+    if not os.path.exists(script_path):
+        error_msg = f"Script not found: {script_path}"
+        logger.error(error_msg)
+        return f"Error: {error_msg}"
+    
     script_dir = os.path.dirname(script_path)
     script_name = os.path.basename(script_path)
+    
+    # コマンドの構築
     command = f"uv run {script_name} --x0 {x0} --y0 {y0} --z0 {z0} --x1 {x1} --y1 {y1} --z1 {z1} --blockType {blockType}"
     
     # コマンドの実行をログに記録
     logger.info(f"Executing command: {command}")
     
+    # コマンド実行とエラーハンドリング
     try:
+        # タイムアウト設定付きでコマンド実行
         result = subprocess.run(
             command.split(),
             cwd=script_dir,
             capture_output=True, 
-            text=True
+            text=True,
+            timeout=30  # 30秒のタイムアウト
         )
         
-        # 実行結果をログに記録
+        # 実行結果の処理
         if result.returncode == 0:
             logger.info(f"Command executed successfully: {result.stdout.strip()}")
+            return result.stdout.strip()
         else:
-            logger.error(f"Command failed with error: {result.stderr.strip()}")
-        
-        return result.stdout
+            error_msg = f"Command failed with return code {result.returncode}: {result.stderr.strip()}"
+            logger.error(error_msg)
+            
+            # エラーコードに基づいた詳細なエラーメッセージ
+            error_details = {
+                1: "Invalid value provided",
+                2: "Connection error to Minecraft server",
+                3: "Invalid argument",
+                4: "Unexpected error in script execution"
+            }
+            
+            error_detail = error_details.get(result.returncode, "Unknown error")
+            return f"Error: {error_detail} - {result.stderr.strip()}"
+            
+    except subprocess.TimeoutExpired:
+        error_msg = "Command execution timed out after 30 seconds"
+        logger.error(error_msg)
+        return f"Error: {error_msg}"
+    except FileNotFoundError:
+        error_msg = f"Command not found: {command.split()[0]}"
+        logger.error(error_msg)
+        return f"Error: {error_msg}"
+    except PermissionError:
+        error_msg = "Permission denied when executing the command"
+        logger.error(error_msg)
+        return f"Error: {error_msg}"
     except Exception as e:
-        # 例外が発生した場合はエラーログを記録
+        # その他の例外が発生した場合はエラーログを記録
         error_msg = f"Exception occurred while executing command: {str(e)}"
         logger.error(error_msg)
         return f"Error: {error_msg}"
-    
+
+# サーバー起動時の健全性チェック
+def check_environment():
+    """環境の健全性をチェックする"""
+    try:
+        # uvコマンドが利用可能かチェック
+        result = subprocess.run(
+            ["which", "uv"],
+            capture_output=True,
+            text=True
+        )
+        if result.returncode != 0:
+            logger.warning("uv command not found. Make sure it's installed and in PATH.")
+            print("Warning: uv command not found. Make sure it's installed and in PATH.")
+        
+        # ツールスクリプトの存在確認
+        tools_path = os.path.join(this_file_dir, "tools")
+        if not os.path.exists(tools_path):
+            logger.error(f"Tools directory not found: {tools_path}")
+            print(f"Error: Tools directory not found: {tools_path}")
+            return False
+        
+        setblocks_path = os.path.join(tools_path, "setBlocks.py")
+        if not os.path.exists(setblocks_path):
+            logger.error(f"setBlocks.py script not found: {setblocks_path}")
+            print(f"Error: setBlocks.py script not found: {setblocks_path}")
+            return False
+        
+        # mcpiライブラリが利用可能かチェック
+        try:
+            import importlib.util
+            if importlib.util.find_spec("mcpi") is None:
+                logger.warning("mcpi library not found. Make sure it's installed.")
+                print("Warning: mcpi library not found. Make sure it's installed.")
+        except ImportError:
+            logger.warning("Could not check for mcpi library.")
+            print("Warning: Could not check for mcpi library.")
+        
+        return True
+    except Exception as e:
+        logger.error(f"Error during environment check: {str(e)}")
+        print(f"Error during environment check: {str(e)}")
+        return False
+
 if __name__ == "__main__":
-    # ログレベルを変更したい場合はここで設定できます
-    # 例: logger = Logger("minecraft_tools", logging.DEBUG)
-    
-    logger.info("Starting Minecraft Tool Server")
-    mcp.run(transport='stdio')
-    logger.info("Minecraft Tool Server stopped")
+    try:
+        # 環境チェック
+        if not check_environment():
+            logger.critical("Environment check failed. Some features may not work correctly.")
+            print("Critical: Environment check failed. Some features may not work correctly.")
+        
+        logger.info("Starting Minecraft Tool Server")
+        print("Starting Minecraft Tool Server...")
+        
+        # サーバー起動
+        mcp.run(transport='stdio')
+        
+        logger.info("Minecraft Tool Server stopped")
+        print("Minecraft Tool Server stopped")
+    except KeyboardInterrupt:
+        logger.info("Server stopped by keyboard interrupt")
+        print("\nServer stopped by keyboard interrupt")
+    except Exception as e:
+        logger.critical(f"Critical error in server: {str(e)}")
+        print(f"Critical error: {str(e)}")
+        import traceback
+        logger.critical(f"Traceback: {traceback.format_exc()}")
+        sys.exit(1)
