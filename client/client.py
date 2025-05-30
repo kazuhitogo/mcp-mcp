@@ -54,11 +54,17 @@ def main():
             tools.extend(client.list_tools_sync())
         
         agent = Agent(
+            system_prompt = """
+あなたは Minecraft で構造物を作るプロフェッショナルです。与えられたツールを駆使して、ユーザーの要望に応えてください。
+ただし、ユーザーの要望は雑で情報が不足する場合があります。その場合はあなたがプロフェッショナルとしてこれがユーザーの望むものである、というのを仮定して進めてください。
+また作業開始前や作業途中、最後に capture ツール及び imege_reader, setPlayerPos ツールを使って Minecraft のフィールドの状況を把握してください。
+プレイヤーの視点は鳥瞰で固定のため、上から見て適切に出来上がっているかどうかのチェックが大切です。確認作業が作業の精度を高めますので頻繁に行う必要があります。
+""",
             tools = tools,
             callback_handler=strands_callback_handler
         )
         message = """
-take a screenshot in mincecraft.
+まずフィールド全体を air で埋めた後、超巨大なダムを作ってください。
 """
         agent(message)
         

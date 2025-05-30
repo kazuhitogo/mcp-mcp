@@ -62,6 +62,318 @@ def capture():
     return result.stdout.strip()
 
 @mcp.tool()
+def getBlock(x: int, y: int, z: int) -> int:
+    """
+    Get the block type at the specified coordinates.
+    
+    Args:
+        x: x coordinate, required, int
+        y: y coordinate, required, int
+        z: z coordinate, required, int
+    
+    Returns:
+        Block type ID as an integer
+    """
+    # 入力値の検証
+    try:
+        # 整数型の検証
+        for param_name, param_value in [('x', x), ('y', y), ('z', z)]:
+            if not isinstance(param_value, int):
+                error_msg = f"Parameter {param_name} must be an integer, got {type(param_value).__name__}"
+                logger.error(error_msg)
+                return f"Error: {error_msg}"
+        
+        # y座標の範囲検証
+        if y < 0 or y > 255:
+            error_msg = f"y must be between 0 and 255, got {y}"
+            logger.error(error_msg)
+            return f"Error: {error_msg}"
+    except Exception as e:
+        error_msg = f"Parameter validation error: {str(e)}"
+        logger.error(error_msg)
+        return f"Error: {error_msg}"
+    
+    # スクリプトパスの設定と検証
+    script_path = os.path.join(this_file_dir, "tools/getBlock.py")
+    if not os.path.exists(script_path):
+        error_msg = f"Script not found: {script_path}"
+        logger.error(error_msg)
+        return f"Error: {error_msg}"
+    
+    script_dir = os.path.dirname(script_path)
+    script_name = os.path.basename(script_path)
+    
+    # コマンドの構築
+    command = f"uv run {script_name} --x {x} --y {y} --z {z}"
+    
+    # コマンドの実行をログに記録
+    logger.info(f"Executing command: {command}")
+    
+    # コマンド実行とエラーハンドリング
+    try:
+        # タイムアウト設定付きでコマンド実行
+        result = subprocess.run(
+            command.split(),
+            cwd=script_dir,
+            capture_output=True, 
+            text=True,
+            timeout=30  # 30秒のタイムアウト
+        )
+        
+        # 実行結果の処理
+        if result.returncode == 0:
+            logger.info(f"Command executed successfully: {result.stdout.strip()}")
+            try:
+                return int(result.stdout.strip())
+            except ValueError:
+                return result.stdout.strip()
+        else:
+            error_msg = f"Command failed with return code {result.returncode}: {result.stderr.strip()}"
+            logger.error(error_msg)
+            
+            # エラーコードに基づいた詳細なエラーメッセージ
+            error_details = {
+                1: "Invalid value provided",
+                2: "Connection error to Minecraft server",
+                3: "Invalid argument",
+                4: "Unexpected error in script execution"
+            }
+            
+            error_detail = error_details.get(result.returncode, "Unknown error")
+            return f"Error: {error_detail} - {result.stderr.strip()}"
+            
+    except subprocess.TimeoutExpired:
+        error_msg = "Command execution timed out after 30 seconds"
+        logger.error(error_msg)
+        return f"Error: {error_msg}"
+    except FileNotFoundError:
+        error_msg = f"Command not found: {command.split()[0]}"
+        logger.error(error_msg)
+        return f"Error: {error_msg}"
+    except PermissionError:
+        error_msg = "Permission denied when executing the command"
+        logger.error(error_msg)
+        return f"Error: {error_msg}"
+    except Exception as e:
+        # その他の例外が発生した場合はエラーログを記録
+        error_msg = f"Exception occurred while executing command: {str(e)}"
+        logger.error(error_msg)
+        return f"Error: {error_msg}"
+
+@mcp.tool()
+def setBlock(x: int, y: int, z: int, blockType: int, blockData: int = None) -> str:
+    """
+    Set a block at the specified coordinates.
+    
+    Args:
+        x: x coordinate, required, int
+        y: y coordinate, required, int
+        z: z coordinate, required, int
+        blockType: type of block to set (0-255), required, int
+        blockData: data value for the block (0-15), optional, int
+    
+    Returns:
+        Result message
+    """
+    # 入力値の検証
+    try:
+        # 整数型の検証
+        for param_name, param_value in [
+            ('x', x), ('y', y), ('z', z), ('blockType', blockType)
+        ]:
+            if not isinstance(param_value, int):
+                error_msg = f"Parameter {param_name} must be an integer, got {type(param_value).__name__}"
+                logger.error(error_msg)
+                return f"Error: {error_msg}"
+        
+        # blockDataが指定されている場合は整数型の検証
+        if blockData is not None and not isinstance(blockData, int):
+            error_msg = f"Parameter blockData must be an integer, got {type(blockData).__name__}"
+            logger.error(error_msg)
+            return f"Error: {error_msg}"
+        
+        # blockType の範囲検証
+        if blockType < 0 or blockType > 255:
+            error_msg = f"blockType must be between 0 and 255, got {blockType}"
+            logger.error(error_msg)
+            return f"Error: {error_msg}"
+        
+        # blockData の範囲検証（指定されている場合）
+        if blockData is not None and (blockData < 0 or blockData > 15):
+            error_msg = f"blockData must be between 0 and 15, got {blockData}"
+            logger.error(error_msg)
+            return f"Error: {error_msg}"
+        
+        # y座標の範囲検証
+        if y < 0 or y > 255:
+            error_msg = f"y must be between 0 and 255, got {y}"
+            logger.error(error_msg)
+            return f"Error: {error_msg}"
+    except Exception as e:
+        error_msg = f"Parameter validation error: {str(e)}"
+        logger.error(error_msg)
+        return f"Error: {error_msg}"
+    
+    # スクリプトパスの設定と検証
+    script_path = os.path.join(this_file_dir, "tools/setBlock.py")
+    if not os.path.exists(script_path):
+        error_msg = f"Script not found: {script_path}"
+        logger.error(error_msg)
+        return f"Error: {error_msg}"
+    
+    script_dir = os.path.dirname(script_path)
+    script_name = os.path.basename(script_path)
+    
+    # コマンドの構築
+    command = f"uv run {script_name} --x {x} --y {y} --z {z} --blockType {blockType}"
+    if blockData is not None:
+        command += f" --blockData {blockData}"
+    
+    # コマンドの実行をログに記録
+    logger.info(f"Executing command: {command}")
+    
+    # コマンド実行とエラーハンドリング
+    try:
+        # タイムアウト設定付きでコマンド実行
+        result = subprocess.run(
+            command.split(),
+            cwd=script_dir,
+            capture_output=True, 
+            text=True,
+            timeout=30  # 30秒のタイムアウト
+        )
+        
+        # 実行結果の処理
+        if result.returncode == 0:
+            logger.info(f"Command executed successfully: {result.stdout.strip()}")
+            return result.stdout.strip()
+        else:
+            error_msg = f"Command failed with return code {result.returncode}: {result.stderr.strip()}"
+            logger.error(error_msg)
+            
+            # エラーコードに基づいた詳細なエラーメッセージ
+            error_details = {
+                1: "Invalid value provided",
+                2: "Connection error to Minecraft server",
+                3: "Invalid argument",
+                4: "Unexpected error in script execution"
+            }
+            
+            error_detail = error_details.get(result.returncode, "Unknown error")
+            return f"Error: {error_detail} - {result.stderr.strip()}"
+            
+    except subprocess.TimeoutExpired:
+        error_msg = "Command execution timed out after 30 seconds"
+        logger.error(error_msg)
+        return f"Error: {error_msg}"
+    except FileNotFoundError:
+        error_msg = f"Command not found: {command.split()[0]}"
+        logger.error(error_msg)
+        return f"Error: {error_msg}"
+    except PermissionError:
+        error_msg = "Permission denied when executing the command"
+        logger.error(error_msg)
+        return f"Error: {error_msg}"
+    except Exception as e:
+        # その他の例外が発生した場合はエラーログを記録
+        error_msg = f"Exception occurred while executing command: {str(e)}"
+        logger.error(error_msg)
+        return f"Error: {error_msg}"
+
+@mcp.tool()
+def getPlayerPos(tile: bool = False) -> dict:
+    """
+    Get the player's current position.
+    
+    Args:
+        tile: If True, get tile position instead of exact position, optional, bool
+    
+    Returns:
+        Dictionary containing x, y, z coordinates
+    """
+    # 入力値の検証
+    try:
+        if not isinstance(tile, bool):
+            error_msg = f"Parameter tile must be a boolean, got {type(tile).__name__}"
+            logger.error(error_msg)
+            return {"error": error_msg}
+    except Exception as e:
+        error_msg = f"Parameter validation error: {str(e)}"
+        logger.error(error_msg)
+        return {"error": error_msg}
+    
+    # スクリプトパスの設定と検証
+    script_path = os.path.join(this_file_dir, "tools/getPlayerPos.py")
+    if not os.path.exists(script_path):
+        error_msg = f"Script not found: {script_path}"
+        logger.error(error_msg)
+        return {"error": error_msg}
+    
+    script_dir = os.path.dirname(script_path)
+    script_name = os.path.basename(script_path)
+    
+    # コマンドの構築
+    command = f"uv run {script_name}"
+    if tile:
+        command += " --tile"
+    
+    # コマンドの実行をログに記録
+    logger.info(f"Executing command: {command}")
+    
+    # コマンド実行とエラーハンドリング
+    try:
+        # タイムアウト設定付きでコマンド実行
+        result = subprocess.run(
+            command.split(),
+            cwd=script_dir,
+            capture_output=True, 
+            text=True,
+            timeout=30  # 30秒のタイムアウト
+        )
+        
+        # 実行結果の処理
+        if result.returncode == 0:
+            logger.info(f"Command executed successfully: {result.stdout.strip()}")
+            try:
+                return json.loads(result.stdout.strip())
+            except json.JSONDecodeError:
+                error_msg = f"Failed to parse JSON response: {result.stdout.strip()}"
+                logger.error(error_msg)
+                return {"error": error_msg}
+        else:
+            error_msg = f"Command failed with return code {result.returncode}: {result.stderr.strip()}"
+            logger.error(error_msg)
+            
+            # エラーコードに基づいた詳細なエラーメッセージ
+            error_details = {
+                1: "Invalid value provided",
+                2: "Connection error to Minecraft server",
+                3: "Invalid argument",
+                4: "Unexpected error in script execution"
+            }
+            
+            error_detail = error_details.get(result.returncode, "Unknown error")
+            return {"error": f"{error_detail} - {result.stderr.strip()}"}
+            
+    except subprocess.TimeoutExpired:
+        error_msg = "Command execution timed out after 30 seconds"
+        logger.error(error_msg)
+        return {"error": error_msg}
+    except FileNotFoundError:
+        error_msg = f"Command not found: {command.split()[0]}"
+        logger.error(error_msg)
+        return {"error": error_msg}
+    except PermissionError:
+        error_msg = "Permission denied when executing the command"
+        logger.error(error_msg)
+        return {"error": error_msg}
+    except Exception as e:
+        # その他の例外が発生した場合はエラーログを記録
+        error_msg = f"Exception occurred while executing command: {str(e)}"
+        logger.error(error_msg)
+        return {"error": error_msg}
+
+@mcp.tool()
 def setBlocks(x0:int, y0: int, z0: int, x1: int, y1: int ,z1: int, blockType:int) -> str:
     """
     A function that places Blocks within the range of a 3D bounding box specified by arguments (defined by coordinates 1(x,y,z) and 2(x,y,z)) in Minecraft.
@@ -484,3 +796,290 @@ if __name__ == "__main__":
         import traceback
         logger.critical(f"Traceback: {traceback.format_exc()}")
         sys.exit(1)
+@mcp.tool()
+def setPlayerPos(x: float, y: float, z: float, tile: bool = False) -> str:
+    """
+    Set the player's position.
+    
+    Args:
+        x: x coordinate, required, float
+        y: y coordinate, required, float
+        z: z coordinate, required, float
+        tile: If True, set tile position instead of exact position, optional, bool
+    
+    Returns:
+        Result message
+    """
+    # 入力値の検証
+    try:
+        # 数値型の検証
+        for param_name, param_value in [('x', x), ('y', y), ('z', z)]:
+            if not isinstance(param_value, (int, float)):
+                error_msg = f"Parameter {param_name} must be a number, got {type(param_value).__name__}"
+                logger.error(error_msg)
+                return f"Error: {error_msg}"
+        
+        # tile パラメータの検証
+        if not isinstance(tile, bool):
+            error_msg = f"Parameter tile must be a boolean, got {type(tile).__name__}"
+            logger.error(error_msg)
+            return f"Error: {error_msg}"
+        
+        # y座標の範囲検証
+        if y < 0 or y > 255:
+            error_msg = f"y must be between 0 and 255, got {y}"
+            logger.error(error_msg)
+            return f"Error: {error_msg}"
+    except Exception as e:
+        error_msg = f"Parameter validation error: {str(e)}"
+        logger.error(error_msg)
+        return f"Error: {error_msg}"
+    
+    # スクリプトパスの設定と検証
+    script_path = os.path.join(this_file_dir, "tools/setPlayerPos.py")
+    if not os.path.exists(script_path):
+        error_msg = f"Script not found: {script_path}"
+        logger.error(error_msg)
+        return f"Error: {error_msg}"
+    
+    script_dir = os.path.dirname(script_path)
+    script_name = os.path.basename(script_path)
+    
+    # コマンドの構築
+    command = f"uv run {script_name} --x {x} --y {y} --z {z}"
+    if tile:
+        command += " --tile"
+    
+    # コマンドの実行をログに記録
+    logger.info(f"Executing command: {command}")
+    
+    # コマンド実行とエラーハンドリング
+    try:
+        # タイムアウト設定付きでコマンド実行
+        result = subprocess.run(
+            command.split(),
+            cwd=script_dir,
+            capture_output=True, 
+            text=True,
+            timeout=30  # 30秒のタイムアウト
+        )
+        
+        # 実行結果の処理
+        if result.returncode == 0:
+            logger.info(f"Command executed successfully: {result.stdout.strip()}")
+            return result.stdout.strip()
+        else:
+            error_msg = f"Command failed with return code {result.returncode}: {result.stderr.strip()}"
+            logger.error(error_msg)
+            
+            # エラーコードに基づいた詳細なエラーメッセージ
+            error_details = {
+                1: "Invalid value provided",
+                2: "Connection error to Minecraft server",
+                3: "Invalid argument",
+                4: "Unexpected error in script execution"
+            }
+            
+            error_detail = error_details.get(result.returncode, "Unknown error")
+            return f"Error: {error_detail} - {result.stderr.strip()}"
+            
+    except subprocess.TimeoutExpired:
+        error_msg = "Command execution timed out after 30 seconds"
+        logger.error(error_msg)
+        return f"Error: {error_msg}"
+    except FileNotFoundError:
+        error_msg = f"Command not found: {command.split()[0]}"
+        logger.error(error_msg)
+        return f"Error: {error_msg}"
+    except PermissionError:
+        error_msg = "Permission denied when executing the command"
+        logger.error(error_msg)
+        return f"Error: {error_msg}"
+    except Exception as e:
+        # その他の例外が発生した場合はエラーログを記録
+        error_msg = f"Exception occurred while executing command: {str(e)}"
+        logger.error(error_msg)
+        return f"Error: {error_msg}"
+
+@mcp.tool()
+def postToChat(message: str) -> str:
+    """
+    Post a message to the Minecraft chat.
+    
+    Args:
+        message: Message to post to chat, required, str
+    
+    Returns:
+        Result message
+    """
+    # 入力値の検証
+    try:
+        if not isinstance(message, str):
+            error_msg = f"Parameter message must be a string, got {type(message).__name__}"
+            logger.error(error_msg)
+            return f"Error: {error_msg}"
+        
+        if not message:
+            error_msg = "Message cannot be empty"
+            logger.error(error_msg)
+            return f"Error: {error_msg}"
+    except Exception as e:
+        error_msg = f"Parameter validation error: {str(e)}"
+        logger.error(error_msg)
+        return f"Error: {error_msg}"
+    
+    # スクリプトパスの設定と検証
+    script_path = os.path.join(this_file_dir, "tools/postToChat.py")
+    if not os.path.exists(script_path):
+        error_msg = f"Script not found: {script_path}"
+        logger.error(error_msg)
+        return f"Error: {error_msg}"
+    
+    script_dir = os.path.dirname(script_path)
+    script_name = os.path.basename(script_path)
+    
+    # コマンドの構築
+    command = f"uv run {script_name} --message \"{message}\""
+    
+    # コマンドの実行をログに記録
+    logger.info(f"Executing command: {command}")
+    
+    # コマンド実行とエラーハンドリング
+    try:
+        # タイムアウト設定付きでコマンド実行
+        result = subprocess.run(
+            command.split(),
+            cwd=script_dir,
+            capture_output=True, 
+            text=True,
+            timeout=30  # 30秒のタイムアウト
+        )
+        
+        # 実行結果の処理
+        if result.returncode == 0:
+            logger.info(f"Command executed successfully: {result.stdout.strip()}")
+            return result.stdout.strip()
+        else:
+            error_msg = f"Command failed with return code {result.returncode}: {result.stderr.strip()}"
+            logger.error(error_msg)
+            
+            # エラーコードに基づいた詳細なエラーメッセージ
+            error_details = {
+                1: "Invalid value provided",
+                2: "Connection error to Minecraft server",
+                3: "Invalid argument",
+                4: "Unexpected error in script execution"
+            }
+            
+            error_detail = error_details.get(result.returncode, "Unknown error")
+            return f"Error: {error_detail} - {result.stderr.strip()}"
+            
+    except subprocess.TimeoutExpired:
+        error_msg = "Command execution timed out after 30 seconds"
+        logger.error(error_msg)
+        return f"Error: {error_msg}"
+    except FileNotFoundError:
+        error_msg = f"Command not found: {command.split()[0]}"
+        logger.error(error_msg)
+        return f"Error: {error_msg}"
+    except PermissionError:
+        error_msg = "Permission denied when executing the command"
+        logger.error(error_msg)
+        return f"Error: {error_msg}"
+    except Exception as e:
+        # その他の例外が発生した場合はエラーログを記録
+        error_msg = f"Exception occurred while executing command: {str(e)}"
+        logger.error(error_msg)
+        return f"Error: {error_msg}"
+
+@mcp.tool()
+def getHeight(x: int, z: int) -> int:
+    """
+    Get the height of the highest non-air block at the specified x,z coordinates.
+    
+    Args:
+        x: x coordinate, required, int
+        z: z coordinate, required, int
+    
+    Returns:
+        Height (y-coordinate) as an integer
+    """
+    # 入力値の検証
+    try:
+        # 整数型の検証
+        for param_name, param_value in [('x', x), ('z', z)]:
+            if not isinstance(param_value, int):
+                error_msg = f"Parameter {param_name} must be an integer, got {type(param_value).__name__}"
+                logger.error(error_msg)
+                return f"Error: {error_msg}"
+    except Exception as e:
+        error_msg = f"Parameter validation error: {str(e)}"
+        logger.error(error_msg)
+        return f"Error: {error_msg}"
+    
+    # スクリプトパスの設定と検証
+    script_path = os.path.join(this_file_dir, "tools/getHeight.py")
+    if not os.path.exists(script_path):
+        error_msg = f"Script not found: {script_path}"
+        logger.error(error_msg)
+        return f"Error: {error_msg}"
+    
+    script_dir = os.path.dirname(script_path)
+    script_name = os.path.basename(script_path)
+    
+    # コマンドの構築
+    command = f"uv run {script_name} --x {x} --z {z}"
+    
+    # コマンドの実行をログに記録
+    logger.info(f"Executing command: {command}")
+    
+    # コマンド実行とエラーハンドリング
+    try:
+        # タイムアウト設定付きでコマンド実行
+        result = subprocess.run(
+            command.split(),
+            cwd=script_dir,
+            capture_output=True, 
+            text=True,
+            timeout=30  # 30秒のタイムアウト
+        )
+        
+        # 実行結果の処理
+        if result.returncode == 0:
+            logger.info(f"Command executed successfully: {result.stdout.strip()}")
+            try:
+                return int(result.stdout.strip())
+            except ValueError:
+                return result.stdout.strip()
+        else:
+            error_msg = f"Command failed with return code {result.returncode}: {result.stderr.strip()}"
+            logger.error(error_msg)
+            
+            # エラーコードに基づいた詳細なエラーメッセージ
+            error_details = {
+                1: "Invalid value provided",
+                2: "Connection error to Minecraft server",
+                3: "Invalid argument",
+                4: "Unexpected error in script execution"
+            }
+            
+            error_detail = error_details.get(result.returncode, "Unknown error")
+            return f"Error: {error_detail} - {result.stderr.strip()}"
+            
+    except subprocess.TimeoutExpired:
+        error_msg = "Command execution timed out after 30 seconds"
+        logger.error(error_msg)
+        return f"Error: {error_msg}"
+    except FileNotFoundError:
+        error_msg = f"Command not found: {command.split()[0]}"
+        logger.error(error_msg)
+        return f"Error: {error_msg}"
+    except PermissionError:
+        error_msg = "Permission denied when executing the command"
+        logger.error(error_msg)
+        return f"Error: {error_msg}"
+    except Exception as e:
+        # その他の例外が発生した場合はエラーログを記録
+        error_msg = f"Exception occurred while executing command: {str(e)}"
+        logger.error(error_msg)
+        return f"Error: {error_msg}"

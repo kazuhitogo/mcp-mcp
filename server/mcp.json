@@ -4,7 +4,7 @@
             "command": "uv",
             "args": [
                 "--directory",
-                "/path/to/clone/directory/mcp-mcp/server",
+                "/home/gokazu/Desktop/mcp-mcp/server",
                 "run",
                 "minecraft.py"
             ]
