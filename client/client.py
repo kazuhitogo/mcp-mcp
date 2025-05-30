@@ -11,14 +11,22 @@ from contextlib import ExitStack
 from mcp import stdio_client, StdioServerParameters
 from tools import capture
 from strands_tools import image_reader
+import traceback
 
 # ロガーの初期化 - クライアント用のログディレクトリを指定
 logger = Logger("mcp_client", logging.INFO, "client/logs")
 
 def parse_arguments():
     """コマンドライン引数を解析する"""
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description="Minecraft Agent Client")
     parser.add_argument('--mcp', type=str, help='mcp.json のパス')
+    
+    # 引数が指定されていない場合のヘルプ表示
+    if len(sys.argv) == 1:
+        parser.print_help()
+        logger.warning("コマンドライン引数が指定されていません。--mcp オプションが必要です。")
+        sys.exit(1)
+        
     args = parser.parse_args()
     logger.debug(f"コマンドライン引数: mcp={args.mcp}")
     return args
@@ -26,38 +34,78 @@ def parse_arguments():
 def load_mcp_clients():
     """MCP設定ファイルからクライアントを読み込む"""
     args = parse_arguments()
+    
+    # MCPファイルパスが指定されていない場合のエラーハンドリング
+    if args.mcp is None:
+        logger.error("MCP設定ファイルが指定されていません。--mcp オプションを使用してください")
+        raise ValueError("MCP設定ファイルが指定されていません。--mcp オプションを使用してください")
+    
     logger.info(f"MCP設定ファイル '{args.mcp}' を読み込み中...")
     
     try:
         with open(args.mcp, 'r') as f:
-            mcp_settings = json.load(f)["mcpServers"]
+            mcp_json = json.load(f)
+            
+        # mcpServersキーの存在確認
+        if "mcpServers" not in mcp_json:
+            logger.error("MCP設定ファイルに 'mcpServers' キーがありません")
+            raise KeyError("MCP設定ファイルに 'mcpServers' キーがありません")
+            
+        mcp_settings = mcp_json["mcpServers"]
+        
+        # サーバー設定が空の場合のエラーハンドリング
+        if not mcp_settings:
+            logger.error("MCP設定ファイルにサーバー設定がありません")
+            raise ValueError("MCP設定ファイルにサーバー設定がありません")
         
         logger.debug(f"MCP設定: {len(mcp_settings)} サーバーが見つかりました")
         
         mcp_clients = []
         for key in mcp_settings.keys():
             logger.debug(f"MCPクライアント '{key}' を初期化中...")
-            mcp_client = MCPClient(
-                lambda: stdio_client(
-                    StdioServerParameters(
-                        command=mcp_settings[key]["command"], 
-                        args=mcp_settings[key]["args"]
+            
+            # 必要なキーの存在確認
+            if "command" not in mcp_settings[key]:
+                logger.error(f"サーバー '{key}' に 'command' キーがありません")
+                raise KeyError(f"サーバー '{key}' に 'command' キーがありません")
+                
+            if "args" not in mcp_settings[key]:
+                logger.error(f"サーバー '{key}' に 'args' キーがありません")
+                raise KeyError(f"サーバー '{key}' に 'args' キーがありません")
+            
+            try:
+                mcp_client = MCPClient(
+                    lambda key=key: stdio_client(
+                        StdioServerParameters(
+                            command=mcp_settings[key]["command"], 
+                            args=mcp_settings[key]["args"]
+                        )
                     )
                 )
-            )
-            mcp_clients.append(mcp_client)
-            logger.debug(f"MCPクライアント '{key}' の初期化完了")
+                mcp_clients.append(mcp_client)
+                logger.debug(f"MCPクライアント '{key}' の初期化完了")
+            except Exception as e:
+                logger.error(f"MCPクライアント '{key}' の初期化中にエラーが発生しました: {e}")
+                raise RuntimeError(f"MCPクライアント '{key}' の初期化に失敗しました: {e}")
         
+        # クライアントが1つも初期化できなかった場合のエラーハンドリング
+        if not mcp_clients:
+            logger.error("有効なMCPクライアントが初期化できませんでした")
+            raise RuntimeError("有効なMCPクライアントが初期化できませんでした")
+            
         logger.info(f"{len(mcp_clients)}個のMCPクライアントを読み込みました")
         return mcp_clients
     except FileNotFoundError:
         logger.error(f"MCP設定ファイル '{args.mcp}' が見つかりません")
         raise
-    except json.JSONDecodeError:
-        logger.error(f"MCP設定ファイル '{args.mcp}' の解析に失敗しました")
+    except json.JSONDecodeError as e:
+        logger.error(f"MCP設定ファイル '{args.mcp}' の解析に失敗しました: {e}")
         raise
     except KeyError as e:
         logger.error(f"MCP設定ファイルに必要なキー '{e}' がありません")
+        raise
+    except Exception as e:
+        logger.error(f"MCP設定ファイルの読み込み中に予期せぬエラーが発生しました: {e}")
         raise
 
 def strands_callback_handler(**kwargs):
@@ -72,52 +120,113 @@ def strands_callback_handler(**kwargs):
 
 def main():
     """メイン処理"""
-    logger.info("MCPクライアントを読み込み中...")
-    mcp_clients = load_mcp_clients()
-    
-    with ExitStack() as stack:
-        logger.info("クライアントコンテキストを設定中...")
-        clients = [stack.enter_context(mcp_client) for mcp_client in mcp_clients]
+    try:
+        logger.info("MCPクライアントを読み込み中...")
+        mcp_clients = load_mcp_clients()
         
-        logger.info("ツールを準備中...")
-        tools = [capture, image_reader]
-        
-        for client in clients:
-            logger.debug("クライアントからツールを取得中...")
-            client_tools = client.list_tools_sync()
-            tools.extend(client_tools)
-            logger.debug(f"{len(client_tools)}個のツールを追加しました")
-        
-        logger.info(f"合計{len(tools)}個のツールを使用可能")
-        
-        logger.info("Agentを初期化中...")
-        agent = Agent(
-            system_prompt = """
+        with ExitStack() as stack:
+            logger.info("クライアントコンテキストを設定中...")
+            clients = []
+            
+            # クライアントコンテキストの設定とエラーハンドリング
+            for i, mcp_client in enumerate(mcp_clients):
+                try:
+                    client = stack.enter_context(mcp_client)
+                    clients.append(client)
+                    logger.debug(f"クライアント {i+1}/{len(mcp_clients)} のコンテキスト設定完了")
+                except Exception as e:
+                    logger.error(f"クライアント {i+1}/{len(mcp_clients)} のコンテキスト設定に失敗しました: {e}")
+            
+            # クライアントが1つも設定できなかった場合はエラー
+            if not clients:
+                logger.critical("有効なクライアントが設定できませんでした")
+                raise RuntimeError("有効なクライアントが設定できませんでした")
+            
+            logger.info("ツールを準備中...")
+            tools = [capture, image_reader]
+            
+            # クライアントからツールを取得
+            for i, client in enumerate(clients):
+                try:
+                    logger.debug(f"クライアント {i+1}/{len(clients)} からツールを取得中...")
+                    client_tools = client.list_tools_sync()
+                    tools.extend(client_tools)
+                    logger.debug(f"{len(client_tools)}個のツールを追加しました")
+                except Exception as e:
+                    logger.error(f"クライアント {i+1}/{len(clients)} からツールの取得に失敗しました: {e}")
+            
+            # ツールが取得できなかった場合の警告
+            if len(tools) <= 2:  # capture と image_reader だけの場合
+                logger.warning("Minecraftツールが取得できませんでした。基本ツールのみで実行します。")
+            
+            logger.info(f"合計{len(tools)}個のツールを使用可能")
+            
+            try:
+                logger.info("Agentを初期化中...")
+                agent = Agent(
+                    system_prompt = """
 You are a professional at creating structures in Minecraft. Please use the given tools to meet user requests.
 However, user requests may be rough and lack information. In such cases, proceed by assuming what the user wants as a professional.
 Before starting work, during work, and at the end, please use the capture tool and image_reader, setPlayerPos tools to understand the situation in the Minecraft field.
 Since the player's perspective is fixed in a bird's-eye view, it is important to check if everything looks appropriate from above. 
 Frequent checks improve the accuracy of your work, so they need to be done often.
 """,
-            tools = tools,
-            callback_handler=strands_callback_handler
-        )
-        
-        message = """
+                    tools = tools,
+                    callback_handler=strands_callback_handler
+                )
+                
+                message = """
 水を草で埋めて更地にしたあと、巨大でかっこいいピラミッドを作って。
 とくに素材は元のピラミッドの素材にこだわることなく現代的なアートを意識して。
 """
-        logger.info("ユーザーリクエストを処理中...")
-        logger.debug(f"リクエスト内容: {message.strip()}")
-        
-        agent(message)
-        logger.info("処理が完了しました")
+                logger.info("ユーザーリクエストを処理中...")
+                logger.debug(f"リクエスト内容: {message.strip()}")
+                
+                # エージェントの実行とエラーハンドリング
+                try:
+                    response = agent(message)
+                    logger.info("処理が完了しました")
+                    return response
+                except Exception as e:
+                    logger.error(f"エージェントの実行中にエラーが発生しました: {e}")
+                    raise
+            except Exception as e:
+                logger.error(f"Agentの初期化に失敗しました: {e}")
+                raise
+    except Exception as e:
+        logger.critical(f"メイン処理でエラーが発生しました: {e}")
+        raise
 
 
 if __name__ == "__main__":
     logger.info("Minecraft Agent 開始...")
     try:
         main()
+    except KeyboardInterrupt:
+        logger.info("ユーザーによって処理が中断されました")
+        print("\nプログラムが中断されました。終了します...")
+        sys.exit(130)
+    except FileNotFoundError as e:
+        logger.critical(f"ファイルが見つかりません: {e}")
+        print(f"エラー: ファイルが見つかりません - {e}")
+        sys.exit(1)
+    except json.JSONDecodeError as e:
+        logger.critical(f"JSONの解析に失敗しました: {e}")
+        print(f"エラー: JSONの解析に失敗しました - {e}")
+        sys.exit(1)
+    except ValueError as e:
+        logger.critical(f"値が無効です: {e}")
+        print(f"エラー: {e}")
+        sys.exit(1)
+    except KeyError as e:
+        logger.critical(f"必要なキーがありません: {e}")
+        print(f"エラー: 設定ファイルに必要なキーがありません - {e}")
+        sys.exit(1)
+    except RuntimeError as e:
+        logger.critical(f"実行時エラー: {e}")
+        print(f"エラー: {e}")
+        sys.exit(1)
     except Exception as e:
-        logger.exception(f"実行中にエラーが発生しました: {e}")
-        raise
+        logger.exception(f"予期せぬエラーが発生しました: {e}")
+        print(f"予期せぬエラーが発生しました: {e}")
+        sys.exit(1)
