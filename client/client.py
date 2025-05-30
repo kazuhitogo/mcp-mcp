@@ -55,16 +55,17 @@ def main():
         
         agent = Agent(
             system_prompt = """
-あなたは Minecraft で構造物を作るプロフェッショナルです。与えられたツールを駆使して、ユーザーの要望に応えてください。
-ただし、ユーザーの要望は雑で情報が不足する場合があります。その場合はあなたがプロフェッショナルとしてこれがユーザーの望むものである、というのを仮定して進めてください。
-また作業開始前や作業途中、最後に capture ツール及び imege_reader, setPlayerPos ツールを使って Minecraft のフィールドの状況を把握してください。
-プレイヤーの視点は鳥瞰で固定のため、上から見て適切に出来上がっているかどうかのチェックが大切です。確認作業が作業の精度を高めますので頻繁に行う必要があります。
+You are a professional at creating structures in Minecraft. Please use the given tools to meet user requests.
+However, user requests may be rough and lack information. In such cases, proceed by assuming what the user wants as a professional.
+Before starting work, during work, and at the end, please use the capture tool and image_reader, setPlayerPos tools to understand the situation in the Minecraft field.
+Since the player's perspective is fixed in a bird's-eye view, it is important to check if everything looks appropriate from above. 
+Frequent checks improve the accuracy of your work, so they need to be done often.
 """,
             tools = tools,
             callback_handler=strands_callback_handler
         )
         message = """
-まずフィールド全体を air で埋めた後、超巨大なダムを作ってください。
+まずフィールド全体を air で埋めた後、湖と巨大なダム、そしてその下を流れる川を作ってください。
 """
         agent(message)
         
