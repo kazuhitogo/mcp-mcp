@@ -9,6 +9,8 @@ from strands.tools.mcp import MCPClient
 from strands import Agent
 from contextlib import ExitStack
 from mcp import stdio_client, StdioServerParameters
+from tools import capture
+from strands_tools import image_reader
 
 # ロガーの初期化 - クライアント用のログディレクトリを指定
 logger = Logger("mcp_client", logging.INFO, "client/logs")
@@ -47,14 +49,17 @@ def main():
     mcp_clients = load_mcp_clients()
     with ExitStack() as stack:
         clients = [stack.enter_context(mcp_client) for mcp_client in mcp_clients]
-        tools = []
+        tools = [capture, image_reader]
         for client in clients:
             tools.extend(client.list_tools_sync())
+        
         agent = Agent(
             tools = tools,
             callback_handler=strands_callback_handler
         )
-        message = """In Minecraft, clear a 10x10 area with grass centered at -42,0,6, then build the Leaning Tower of Pisa entirely out of TNT in that cleared area. You can decide on any unclear details yourself, so don't ask me various questions and just build it quickly."""
+        message = """
+take a screenshot in mincecraft.
+"""
         agent(message)
         
 

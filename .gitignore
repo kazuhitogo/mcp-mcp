@@ -58,3 +58,5 @@ coverage.xml
 # AWS credentials
 .aws/credentials
 credentials
+
+client/images/*.png

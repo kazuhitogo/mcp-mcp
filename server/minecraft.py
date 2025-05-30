@@ -34,6 +34,34 @@ if not os.path.exists(tools_dir):
     sys.exit(1)
 
 @mcp.tool()
+def capture():
+    """
+    This function takes a screenshot of Minecraft and returns the image file path.
+    
+    Args:
+        None
+    Returns:
+        Screenshot file path
+    """
+    script_path = os.path.join(this_file_dir, "tools/capture.py")
+    script_dir = os.path.dirname(script_path)
+    script_name = os.path.basename(script_path)
+    
+    # コマンドの構築
+    command = f"uv run {script_name}"
+    logger.info(f"Executing command: {command}")
+    result = subprocess.run(
+        command.split(),
+        cwd=script_dir,
+        capture_output=True, 
+        text=True,
+        timeout=30  # 30秒のタイムアウト
+    )
+    logger.info(result.stderr)
+    logger.info(result.stdout.strip())
+    return result.stdout.strip()
+
+@mcp.tool()
 def setBlocks(x0:int, y0: int, z0: int, x1: int, y1: int ,z1: int, blockType:int) -> str:
     """
     A function that places Blocks within the range of a 3D bounding box specified by arguments (defined by coordinates 1(x,y,z) and 2(x,y,z)) in Minecraft.
