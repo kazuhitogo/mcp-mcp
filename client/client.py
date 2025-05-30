@@ -111,11 +111,17 @@ def load_mcp_clients():
 def strands_callback_handler(**kwargs):
     """Strandsからのコールバックを処理する"""
     if "data" in kwargs:
+        # 生成されたテキストをリアルタイムで表示（ログには記録するが、重複表示はしない）
+        print(kwargs['data'], end='', flush=True)
         logger.debug(f"Strands出力: {kwargs['data']}")
     elif "current_tool_use" in kwargs:
         tool = kwargs["current_tool_use"]
         tool_name = tool.get('name', 'unknown')
-        logger.debug(f"Strandsツール使用: {tool_name}")
+        # ツール名が変わった場合のみ表示する
+        if not hasattr(strands_callback_handler, 'last_tool') or strands_callback_handler.last_tool != tool_name:
+            print(f"\n[ツール使用中: {tool_name}]", flush=True)
+            strands_callback_handler.last_tool = tool_name
+            logger.debug(f"Strandsツール使用: {tool_name}")
 
 
 def main():
@@ -175,21 +181,46 @@ Frequent checks improve the accuracy of your work, so they need to be done often
                     callback_handler=strands_callback_handler
                 )
                 
-                message = """
-水を草で埋めて更地にしたあと、巨大でかっこいいピラミッドを作って。
-とくに素材は元のピラミッドの素材にこだわることなく現代的なアートを意識して。
-"""
-                logger.info("ユーザーリクエストを処理中...")
-                logger.debug(f"リクエスト内容: {message.strip()}")
+                # インタラクティブチャットループを開始
+                print("\n=== Minecraft Builder /w Strands Agents チャットを開始します ===")
+                print("終了するには 'exit' または 'quit' と入力してください\n")
                 
-                # エージェントの実行とエラーハンドリング
-                try:
-                    response = agent(message)
-                    logger.info("処理が完了しました")
-                    return response
-                except Exception as e:
-                    logger.error(f"エージェントの実行中にエラーが発生しました: {e}")
-                    raise
+                # ツール使用状態をリセット
+                if hasattr(strands_callback_handler, 'last_tool'):
+                    delattr(strands_callback_handler, 'last_tool')
+                
+                while True:
+                    # ユーザー入力を受け取る
+                    message = input("\n> ")
+                    
+                    # 終了コマンドのチェック
+                    if message.lower() in ['exit', 'quit']:
+                        print("チャットを終了します。")
+                        break
+                    
+                    if not message.strip():
+                        print("入力が空です。何か指示を入力してください。")
+                        continue
+                    
+                    logger.info("ユーザーリクエストを処理中...")
+                    logger.debug(f"リクエスト内容: {message.strip()}")
+                    
+                    # 各リクエスト開始時にツール使用状態をリセット
+                    if hasattr(strands_callback_handler, 'last_tool'):
+                        delattr(strands_callback_handler, 'last_tool')
+                    
+                    # エージェントの実行とエラーハンドリング
+                    try:
+                        print("\n処理中...")
+                        # response.message は表示しない（コールバックハンドラーで既に表示されている）
+                        response = agent(message)
+                        print("\n処理が完了しました")
+                        logger.info("処理が完了しました")
+                    except Exception as e:
+                        logger.error(f"エージェントの実行中にエラーが発生しました: {e}")
+                        print(f"エラーが発生しました: {e}")
+                
+                return "チャットセッションが終了しました"
             except Exception as e:
                 logger.error(f"Agentの初期化に失敗しました: {e}")
                 raise
